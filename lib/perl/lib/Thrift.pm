@@ -17,7 +17,9 @@
 # under the License.
 #
 
-our $VERSION = '0.9.3';
+package Thrift;
+
+our $VERSION = '0.10.0';
 
 require 5.6.0;
 use strict;
@@ -57,6 +59,15 @@ use constant ONEWAY    => 4;
 1;
 
 package Thrift::TException;
+
+use overload '""' => sub {
+    return
+          ref( $_[0] )
+        . " error: "
+        . ( $_[0]->{message} || 'empty message' )
+        . " (code "
+        . ( defined $_[0]->{code} ? $_[0]->{code} : 'undefined' ) . ")";
+    };
 
 sub new {
     my $classname = shift;

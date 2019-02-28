@@ -48,14 +48,14 @@ func (p *printingHandler) TestString(thing string) (r string, err error) {
 	return thing, nil
 }
 
-// Prints 'testBool("%d")' with thing as 'true' or 'false'
+// Prints 'testBool("%t")' with thing as 'true' or 'false'
 // @param bool thing - the bool to print
 // @return bool - returns the bool 'thing'
 //
 // Parameters:
 //  - Thing
 func (p *printingHandler) TestBool(thing bool) (r bool, err error) {
-	fmt.Printf("testBool(%d)\n", thing)
+	fmt.Printf("testBool(%t)\n", thing)
 	return thing, nil
 }
 
@@ -188,7 +188,7 @@ func (p *printingHandler) TestStringMap(thing map[string]string) (r map[string]s
 //
 // Parameters:
 //  - Thing
-func (p *printingHandler) TestSet(thing map[int32]bool) (r map[int32]bool, err error) {
+func (p *printingHandler) TestSet(thing map[int32]struct{}) (r map[int32]struct{}, err error) {
 	fmt.Printf("testSet({")
 	first := true
 	for k, _ := range thing {

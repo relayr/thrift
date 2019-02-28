@@ -53,6 +53,10 @@
 #endif // _WIN32
 #endif
 
+#if defined(_WIN32) && (_WIN32_WINNT < 0x0600)
+  #define AI_ADDRCONFIG 0x0400
+#endif
+
 template <class T>
 inline const SOCKOPT_CAST_T* const_cast_sockopt(const T* v) {
   return reinterpret_cast<const SOCKOPT_CAST_T*>(v);
@@ -77,8 +81,8 @@ using namespace std;
 TSocket::TSocket(const string& host, int port)
   : host_(host),
     port_(port),
-    path_(""),
     socket_(THRIFT_INVALID_SOCKET),
+    peerPort_(0),
     connTimeout_(0),
     sendTimeout_(0),
     recvTimeout_(0),
@@ -90,10 +94,10 @@ TSocket::TSocket(const string& host, int port)
 }
 
 TSocket::TSocket(const string& path)
-  : host_(""),
-    port_(0),
+  : port_(0),
     path_(path),
     socket_(THRIFT_INVALID_SOCKET),
+    peerPort_(0),
     connTimeout_(0),
     sendTimeout_(0),
     recvTimeout_(0),
@@ -106,10 +110,9 @@ TSocket::TSocket(const string& path)
 }
 
 TSocket::TSocket()
-  : host_(""),
-    port_(0),
-    path_(""),
+  : port_(0),
     socket_(THRIFT_INVALID_SOCKET),
+    peerPort_(0),
     connTimeout_(0),
     sendTimeout_(0),
     recvTimeout_(0),
@@ -122,10 +125,9 @@ TSocket::TSocket()
 }
 
 TSocket::TSocket(THRIFT_SOCKET socket)
-  : host_(""),
-    port_(0),
-    path_(""),
+  : port_(0),
     socket_(socket),
+    peerPort_(0),
     connTimeout_(0),
     sendTimeout_(0),
     recvTimeout_(0),
@@ -144,10 +146,9 @@ TSocket::TSocket(THRIFT_SOCKET socket)
 }
 
 TSocket::TSocket(THRIFT_SOCKET socket, boost::shared_ptr<THRIFT_SOCKET> interruptListener)
-  : host_(""),
-    port_(0),
-    path_(""),
+  : port_(0),
     socket_(socket),
+    peerPort_(0),
     interruptListener_(interruptListener),
     connTimeout_(0),
     sendTimeout_(0),
@@ -314,7 +315,20 @@ void TSocket::openConnection(struct addrinfo* res) {
     struct sockaddr_un address;
     address.sun_family = AF_UNIX;
     memcpy(address.sun_path, path_.c_str(), len);
+
     socklen_t structlen = static_cast<socklen_t>(sizeof(address));
+
+    if (!address.sun_path[0]) { // abstract namespace socket
+#ifdef __linux__
+      // sun_path is not null-terminated in this case and structlen determines its length
+      structlen -= sizeof(address.sun_path) - len;
+#else
+      GlobalOutput.perror("TSocket::open() Abstract Namespace Domain sockets only supported on linux: ", -99);
+      throw TTransportException(TTransportException::NOT_OPEN,
+                                " Abstract Namespace Domain socket path not supported");
+#endif
+    }
+
     ret = connect(socket_, (struct sockaddr*)&address, structlen);
 #else
     GlobalOutput.perror("TSocket::open() Unix Domain socket path not supported on windows", -99);
@@ -683,7 +697,7 @@ void TSocket::setLinger(bool on, int linger) {
 #ifndef _WIN32
   struct linger l = {(lingerOn_ ? 1 : 0), lingerVal_};
 #else
-  struct linger l = {(lingerOn_ ? 1 : 0), static_cast<u_short>(lingerVal_)};
+  struct linger l = {static_cast<u_short>(lingerOn_ ? 1 : 0), static_cast<u_short>(lingerVal_)};
 #endif
 
   int ret = setsockopt(socket_, SOL_SOCKET, SO_LINGER, cast_sockopt(&l), sizeof(l));

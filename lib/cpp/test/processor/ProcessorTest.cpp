@@ -299,7 +299,7 @@ void checkNoEvents(const boost::shared_ptr<EventLog>& log) {
  */
 uint32_t checkNewConnEvents(const boost::shared_ptr<EventLog>& log) {
   // Check for an ET_CONN_CREATED event
-  Event event = log->waitForEvent();
+  Event event = log->waitForEvent(2500);
   BOOST_CHECK_EQUAL(EventLog::ET_CONN_CREATED, event.type);
 
   // Some servers call the processContext() hook immediately.
@@ -908,9 +908,20 @@ DEFINE_NOFRAME_TESTS(TSimpleServer, Untemplated)
 
 // TODO: We should test TEventServer in the future.
 // For now, it is known not to work correctly with TProcessorEventHandler.
+#ifdef BOOST_TEST_DYN_LINK
+bool init_unit_test_suite() {
+  unit_test::framework::master_test_suite().p_name.value = "ProcessorTest";
+  return true;
+}
+
+int main( int argc, char* argv[] ) {
+  return ::boost::unit_test::unit_test_main(&init_unit_test_suite,argc,argv);
+}
+#else
 unit_test::test_suite* init_unit_test_suite(int argc, char* argv[]) {
   THRIFT_UNUSED_VARIABLE(argc);
   THRIFT_UNUSED_VARIABLE(argv);
   unit_test::framework::master_test_suite().p_name.value = "ProcessorTest";
   return NULL;
 }
+#endif
