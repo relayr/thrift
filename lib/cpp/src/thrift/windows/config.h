@@ -25,15 +25,20 @@
 #endif // _MSC_VER
 
 #ifndef _WIN32
-#error This is a MSVC header only.
+#error "This is a Windows header only"
 #endif
 
 // use std::thread in MSVC11 (2012) or newer
 #if _MSC_VER >= 1700
 #define USE_STD_THREAD 1
-// otherwise use boost threads
 #else
+// otherwise use boost threads
 #define USE_BOOST_THREAD 1
+#endif
+
+// VS2010 or later has stdint.h
+#if _MSC_VER >= 1600
+#define HAVE_STDINT_H 1
 #endif
 
 #ifndef TARGET_WIN_XP
@@ -60,10 +65,11 @@
 
 #pragma warning(disable : 4996) // Deprecated posix name.
 
-#define VERSION "0.9.3"
+#define VERSION "0.10.0"
 #define HAVE_GETTIMEOFDAY 1
 #define HAVE_SYS_STAT_H 1
 
+// Must be using VS2010 or later, or boost, so that C99 types are defined in the global namespace
 #ifdef HAVE_STDINT_H
 #include <stdint.h>
 #else
@@ -94,6 +100,6 @@ typedef boost::uint8_t uint8_t;
 #else
 #pragma comment(lib, "Ws2_32.lib")
 #pragma comment(lib, "advapi32.lib") // For security APIs in TPipeServer
-#pragma comment(lib, "Shlwapi.lib") // For StrStrIA in TPipeServer
+#pragma comment(lib, "Shlwapi.lib")  // For StrStrIA in TPipeServer
 #endif
 #endif // _THRIFT_WINDOWS_CONFIG_H_

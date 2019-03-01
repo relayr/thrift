@@ -19,13 +19,15 @@
 
 #include <thrift/protocol/TJSONProtocol.h>
 
+#include <boost/lexical_cast.hpp>
+#include <boost/locale.hpp>
+#include <boost/math/special_functions/fpclassify.hpp>
+
+#include <cmath>
 #include <limits>
 #include <locale>
 #include <sstream>
-#include <cmath>
-
-#include <boost/math/special_functions/fpclassify.hpp>
-#include <boost/lexical_cast.hpp>
+#include <stdexcept>
 
 #include <thrift/protocol/TBase64Utils.h>
 #include <thrift/transport/TTransportException.h>
@@ -42,7 +44,6 @@ static const uint8_t kJSONObjectStart = '{';
 static const uint8_t kJSONObjectEnd = '}';
 static const uint8_t kJSONArrayStart = '[';
 static const uint8_t kJSONArrayEnd = ']';
-static const uint8_t kJSONNewline = '\n';
 static const uint8_t kJSONPairSeparator = ':';
 static const uint8_t kJSONElemSeparator = ',';
 static const uint8_t kJSONBackslash = '\\';
@@ -285,6 +286,16 @@ static bool isJSONNumeric(uint8_t ch) {
   return false;
 }
 
+// Return true if the code unit is high surrogate
+static bool isHighSurrogate(uint16_t val) {
+  return val >= 0xD800 && val <= 0xDBFF;
+}
+
+// Return true if the code unit is low surrogate
+static bool isLowSurrogate(uint16_t val) {
+  return val >= 0xDC00 && val <= 0xDFFF;
+}
+
 /**
  * Class to serve as base JSON context and as base class for other context
  * implementations
@@ -513,7 +524,8 @@ namespace {
 std::string doubleToString(double d) {
   std::ostringstream str;
   str.imbue(std::locale::classic());
-  str.precision(std::numeric_limits<double>::digits10 + 1);
+  const int max_digits10 = 2 + std::numeric_limits<double>::digits10;
+  str.precision(max_digits10);
   str << d;
   return str.str();
 }
@@ -640,7 +652,9 @@ uint32_t TJSONProtocol::writeMapBegin(const TType keyType,
 }
 
 uint32_t TJSONProtocol::writeMapEnd() {
-  return writeJSONObjectEnd() + writeJSONArrayEnd();
+  uint32_t result = writeJSONObjectEnd();
+  result += writeJSONArrayEnd();
+  return result;
 }
 
 uint32_t TJSONProtocol::writeListBegin(const TType elemType, const uint32_t size) {
@@ -709,14 +723,17 @@ uint32_t TJSONProtocol::readJSONSyntaxChar(uint8_t ch) {
 }
 
 // Decodes the four hex parts of a JSON escaped string character and returns
-// the character via out. The first two characters must be "00".
-uint32_t TJSONProtocol::readJSONEscapeChar(uint8_t* out) {
-  uint8_t b[2];
-  readJSONSyntaxChar(kJSONZeroChar);
-  readJSONSyntaxChar(kJSONZeroChar);
+// the UTF-16 code unit via out.
+uint32_t TJSONProtocol::readJSONEscapeChar(uint16_t* out) {
+  uint8_t b[4];
   b[0] = reader_.read();
   b[1] = reader_.read();
-  *out = (hexVal(b[0]) << 4) + hexVal(b[1]);
+  b[2] = reader_.read();
+  b[3] = reader_.read();
+
+  *out = (hexVal(b[0]) << 12)
+    + (hexVal(b[1]) << 8) + (hexVal(b[2]) << 4) + hexVal(b[3]);
+
   return 4;
 }
 
@@ -724,6 +741,7 @@ uint32_t TJSONProtocol::readJSONEscapeChar(uint8_t* out) {
 uint32_t TJSONProtocol::readJSONString(std::string& str, bool skipContext) {
   uint32_t result = (skipContext ? 0 : context_->read(reader_));
   result += readJSONSyntaxChar(kJSONStringDelimiter);
+  std::vector<uint16_t> codeunits;
   uint8_t ch;
   str.clear();
   while (true) {
@@ -736,7 +754,22 @@ uint32_t TJSONProtocol::readJSONString(std::string& str, bool skipContext) {
       ch = reader_.read();
       ++result;
       if (ch == kJSONEscapeChar) {
-        result += readJSONEscapeChar(&ch);
+        uint16_t cp;
+        result += readJSONEscapeChar(&cp);
+        if (isHighSurrogate(cp)) {
+          codeunits.push_back(cp);
+        } else {
+          if (isLowSurrogate(cp)
+               && codeunits.empty()) {
+            throw TProtocolException(TProtocolException::INVALID_DATA,
+                                     "Missing UTF-16 high surrogate pair.");
+          }
+          codeunits.push_back(cp);
+          codeunits.push_back(0);
+          str += boost::locale::conv::utf_to_utf<char>(codeunits.data());
+          codeunits.clear();
+        }
+        continue;
       } else {
         size_t pos = kEscapeChars.find(ch);
         if (pos == std::string::npos) {
@@ -747,7 +780,16 @@ uint32_t TJSONProtocol::readJSONString(std::string& str, bool skipContext) {
         ch = kEscapeCharVals[pos];
       }
     }
+    if (!codeunits.empty()) {
+      throw TProtocolException(TProtocolException::INVALID_DATA,
+                               "Missing UTF-16 low surrogate pair.");
+    }
     str += ch;
+  }
+
+  if (!codeunits.empty()) {
+    throw TProtocolException(TProtocolException::INVALID_DATA,
+                             "Missing UTF-16 low surrogate pair.");
   }
   return result;
 }
@@ -761,6 +803,13 @@ uint32_t TJSONProtocol::readJSONBase64(std::string& str) {
     throw TProtocolException(TProtocolException::SIZE_LIMIT);
   uint32_t len = static_cast<uint32_t>(tmp.length());
   str.clear();
+  // Ignore padding
+  if (len >= 2)  {
+    uint32_t bound = len - 2;
+    for (uint32_t i = len - 1; i >= bound && b[i] == '='; --i) {
+      --len;
+    }
+  }
   while (len >= 4) {
     base64_decode(b, 4);
     str.append((const char*)b, 3);
@@ -969,7 +1018,9 @@ uint32_t TJSONProtocol::readMapBegin(TType& keyType, TType& valType, uint32_t& s
 }
 
 uint32_t TJSONProtocol::readMapEnd() {
-  return readJSONObjectEnd() + readJSONArrayEnd();
+  uint32_t result = readJSONObjectEnd();
+  result += readJSONArrayEnd();
+  return result;
 }
 
 uint32_t TJSONProtocol::readListBegin(TType& elemType, uint32_t& size) {

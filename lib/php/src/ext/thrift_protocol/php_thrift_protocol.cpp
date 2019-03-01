@@ -21,6 +21,14 @@
 #include "config.h"
 #endif
 
+#include "php.h"
+#include "zend_interfaces.h"
+#include "zend_exceptions.h"
+#include "php_thrift_protocol.h"
+
+/* GUARD FOR PHP 5 */
+#if PHP_VERSION_ID < 70000 && PHP_VERSION_ID > 50000
+
 #include <sys/types.h>
 #if defined( WIN32 ) || defined( _WIN64 )
 typedef int  int32_t; 
@@ -86,11 +94,6 @@ const int8_t T_EXCEPTION = 3;
 // tprotocolexception
 const int INVALID_DATA = 1;
 const int BAD_VERSION = 4;
-
-#include "php.h"
-#include "zend_interfaces.h"
-#include "zend_exceptions.h"
-#include "php_thrift_protocol.h"
 
 static zend_function_entry thrift_protocol_functions[] = {
   PHP_FE(thrift_protocol_write_binary, NULL)
@@ -391,7 +394,7 @@ void protocol_writeMessageBegin(zval *transport, const char* method_name, int32_
 
 
 // Create a PHP object given a typename and call the ctor, optionally passing up to 2 arguments
-void createObject(char* obj_typename, zval* return_value, int nargs = 0, zval* arg1 = NULL, zval* arg2 = NULL) {
+void createObject(const char* obj_typename, zval* return_value, int nargs = 0, zval* arg1 = NULL, zval* arg2 = NULL) {
   TSRMLS_FETCH();
   size_t obj_typename_len = strlen(obj_typename);
   zend_class_entry* ce = zend_fetch_class(obj_typename, obj_typename_len, ZEND_FETCH_CLASS_DEFAULT TSRMLS_CC);
@@ -407,7 +410,7 @@ void createObject(char* obj_typename, zval* return_value, int nargs = 0, zval* a
   zval_ptr_dtor(&ctor_rv);
 }
 
-void throw_tprotocolexception(char* what, long errorcode) {
+void throw_tprotocolexception(const char* what, long errorcode) {
   TSRMLS_FETCH();
 
   zval *zwhat, *zerrorcode;
@@ -991,7 +994,7 @@ PHP_FUNCTION(thrift_protocol_write_binary) {
   }
 }
 
-// 3 params: $transport $response_Typename $strict_read
+// 4 params: $transport $response_Typename $strict_read $buffer_size
 PHP_FUNCTION(thrift_protocol_read_binary) {
   int argc = ZEND_NUM_ARGS();
 
@@ -1014,8 +1017,19 @@ PHP_FUNCTION(thrift_protocol_read_binary) {
     RETURN_NULL();
   }
 
+  if (argc == 4 && Z_TYPE_PP(args[3]) != IS_LONG) {
+    php_error_docref(NULL TSRMLS_CC, E_ERROR, "4nd parameter is not an integer (typename of expected buffer size)");
+    efree(args);
+    RETURN_NULL();
+  }
+
   try {
-    PHPInputTransport transport(*args[0]);
+    size_t buffer_size = 8192;
+    if (argc == 4) {
+      buffer_size = Z_LVAL_PP(args[3]);
+    }
+
+    PHPInputTransport transport(*args[0], buffer_size);
     char* obj_typename = Z_STRVAL_PP(args[1]);
     convert_to_boolean(*args[2]);
     bool strict_read = Z_BVAL_PP(args[2]);
@@ -1067,3 +1081,4 @@ PHP_FUNCTION(thrift_protocol_read_binary) {
   }
 }
 
+#endif /* PHP_VERSION_ID < 70000 && PHP_VERSION_ID > 50000 */

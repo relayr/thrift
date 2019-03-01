@@ -17,12 +17,17 @@
 # under the License.
 #
 
-SUBDIRS =
+SUBDIRS = features
 PRECROSS_TARGET =
 
 if WITH_C_GLIB
 SUBDIRS += c_glib
 PRECROSS_TARGET += precross-c_glib
+endif
+
+if WITH_MONO
+SUBDIRS += csharp
+PRECROSS_TARGET += precross-csharp
 endif
 
 if WITH_CPP
@@ -40,11 +45,18 @@ SUBDIRS += php
 PRECROSS_TARGET += precross-php
 endif
 
+if WITH_DART
+SUBDIRS += dart
+PRECROSS_TARGET += precross-dart
+endif
+
 if WITH_PYTHON
 SUBDIRS += py
 PRECROSS_TARGET += precross-py
-SUBDIRS += py.twisted
 SUBDIRS += py.tornado
+if WITH_TWISTED_TEST
+SUBDIRS += py.twisted
+endif
 endif
 
 if WITH_RUBY
@@ -67,6 +79,12 @@ endif
 
 if WITH_ERLANG
 SUBDIRS += erl
+PRECROSS_TARGET += precross-erl
+endif
+
+if WITH_LUA
+SUBDIRS += lua
+PRECROSS_TARGET += precross-lua
 endif
 
 #
@@ -84,6 +102,7 @@ EXTRA_DIST = \
 	keys \
 	c_glib \
 	cpp \
+	dart \
 	erl \
 	hs \
 	lua \
@@ -102,9 +121,10 @@ EXTRA_DIST = \
 	DenseLinkingTest.thrift \
 	DocTest.thrift \
 	EnumTest.thrift \
-	known_failures_Linux.json \
+	FullCamelTest.thrift \
 	Include.thrift \
 	JavaBeansTest.thrift \
+	JavaTypes.thrift \
 	JsDeepConstructorTest.thrift \
 	ManyOptionals.thrift \
 	ManyTypedefs.thrift \
@@ -114,12 +134,14 @@ EXTRA_DIST = \
 	ReuseObjects.thrift \
 	SmallTest.thrift \
 	StressTest.thrift \
-	test.py \
-	tests.json \
 	ThriftTest.thrift \
 	TypedefTest.thrift \
-	FastbinaryTest.py \
-	result.html \
+	known_failures_Linux.json \
+	test.py \
+	tests.json \
+	rebuild_known_failures.sh \
+	result.js \
+	index.html \
 	README.md \
 	valgrind.suppress
 

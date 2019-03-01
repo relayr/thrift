@@ -122,7 +122,16 @@ func callEverything(client *thrifttest.ThriftTestClient) {
 		t.Fatalf("Unexpected TestDouble() result expected 42.42, got %f ", d)
 	}
 
-	// TODO: add TestBinary() call
+	binout := make([]byte, 256)
+	for i := 0; i < 256; i++ {
+		binout[i] = byte(i)
+	}
+	bin, err := client.TestBinary(binout)
+	for i := 0; i < 256; i++ {
+		if (binout[i] != bin[i]) {
+			t.Fatalf("Unexpected TestBinary() result expected %d, got %d ", binout[i], bin[i])
+		}
+	}
 	
 	xs := thrifttest.NewXtruct()
 	xs.StringThing = "thing"
@@ -165,7 +174,7 @@ func callEverything(client *thrifttest.ThriftTestClient) {
 		t.Fatalf("Unexpected TestStringMap() result expected %#v, got %#v ", sm, smret)
 	}
 
-	s := map[int32]bool{1: true, 2: true, 42: true}
+	s := map[int32]struct{}{1: struct{}{}, 2: struct{}{}, 42: struct{}{}}
 	sret, err := client.TestSet(s)
 	if err != nil {
 		t.Fatalf("Unexpected error in TestSet() call: ", err)

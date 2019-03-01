@@ -17,6 +17,7 @@
  * under the License.
  */
 
+#include <algorithm>
 #include <boost/bind.hpp>
 #include <stdexcept>
 #include <stdint.h>
@@ -147,8 +148,13 @@ void TServerFramework::serve() {
 
       inputTransport = inputTransportFactory_->getTransport(client);
       outputTransport = outputTransportFactory_->getTransport(client);
-      inputProtocol = inputProtocolFactory_->getProtocol(inputTransport);
-      outputProtocol = outputProtocolFactory_->getProtocol(outputTransport);
+      if (!outputProtocolFactory_) {
+        inputProtocol = inputProtocolFactory_->getProtocol(inputTransport, outputTransport);
+        outputProtocol = inputProtocol;
+      } else {
+        inputProtocol = inputProtocolFactory_->getProtocol(inputTransport);
+        outputProtocol = outputProtocolFactory_->getProtocol(outputTransport);
+      }
 
       newlyConnectedClient(shared_ptr<TConnectedClient>(
           new TConnectedClient(getProcessor(inputProtocol, outputProtocol, client),
@@ -209,30 +215,32 @@ void TServerFramework::setConcurrentClientLimit(int64_t newLimit) {
 }
 
 void TServerFramework::stop() {
-  serverTransport_->interrupt();
+  // Order is important because serve() releases serverTransport_ when it is
+  // interrupted, which closes the socket that interruptChildren uses.
   serverTransport_->interruptChildren();
+  serverTransport_->interrupt();
 }
 
 void TServerFramework::newlyConnectedClient(const boost::shared_ptr<TConnectedClient>& pClient) {
-  onClientConnected(pClient);
+  {
+    Synchronized sync(mon_);
+    ++clients_;
+    hwm_ = (std::max)(hwm_, clients_);
+  }
 
-  // Count a concurrent client added.
-  Synchronized sync(mon_);
-  ++clients_;
-  hwm_ = std::max(hwm_, clients_);
+  onClientConnected(pClient);
 }
 
 void TServerFramework::disposeConnectedClient(TConnectedClient* pClient) {
-  {
-    // Count a concurrent client removed.
-    Synchronized sync(mon_);
-    if (limit_ - --clients_ > 0) {
-      mon_.notify();
-    }
-  }
   onClientDisconnected(pClient);
   delete pClient;
+
+  Synchronized sync(mon_);
+  if (limit_ - --clients_ > 0) {
+    mon_.notify();
+  }
 }
+
 }
 }
 } // apache::thrift::server
