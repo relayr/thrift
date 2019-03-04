@@ -74,9 +74,6 @@ public:
     if (maps_ && otp16_) {
       throw "argument error: Cannot specify both maps and otp16; maps are not available for Erlang/OTP R16 or older";
     }
-    if (maps_ && mapfunctions_) {
-      throw "argument error: Cannot specify both maps and mapfunctions";
-    }
 
     out_dir_base_ = "gen-erl";
   }
