@@ -55,12 +55,15 @@ public:
 
     legacy_names_ = false;
     maps_ = false;
+    mapfunctions_ = false;
     otp16_ = false;
     for( iter = parsed_options.begin(); iter != parsed_options.end(); ++iter) {
       if( iter->first.compare("legacynames") == 0) {
         legacy_names_ = true;
       } else if( iter->first.compare("maps") == 0) {
         maps_ = true;
+      } else if( iter->first.compare("mapfunctions") == 0) {
+        mapfunctions_ = true;
       } else if( iter->first.compare("otp16") == 0) {
         otp16_ = true;
       } else {
@@ -70,6 +73,9 @@ public:
 
     if (maps_ && otp16_) {
       throw "argument error: Cannot specify both maps and otp16; maps are not available for Erlang/OTP R16 or older";
+    }
+    if (maps_ && mapfunctions_) {
+      throw "argument error: Cannot specify both maps and mapfunctions";
     }
 
     out_dir_base_ = "gen-erl";
@@ -176,6 +182,9 @@ private:
 
   /* if true use maps instead of dicts in generated code */
   bool maps_;
+
+  /* if true use functions instead of dicts or maps in generated code */
+  bool mapfunctions_;
 
   /* if true use non-namespaced dict and set instead of dict:dict and sets:set */
   bool otp16_;
@@ -534,20 +543,36 @@ string t_erl_generator::render_const_value(t_type* type, t_const_value* value) {
     t_type* ktype = ((t_map*)type)->get_key_type();
     t_type* vtype = ((t_map*)type)->get_val_type();
 
-    if (maps_) {
+    if (mapfunctions_) {
+      out << "fun";
+    } else if (maps_) {
       out << "maps:from_list([";
     } else {
       out << "dict:from_list([";
     }
     map<t_const_value*, t_const_value*>::const_iterator i, end = value->get_map().end();
     for (i = value->get_map().begin(); i != end;) {
-      out << "{" << render_const_value(ktype, i->first) << ","
-          << render_const_value(vtype, i->second) << "}";
+      if (mapfunctions_) {
+        out << "(" << render_const_value(ktype, i->first) << ") -> "
+            << render_const_value(vtype, i->second);
+      } else {
+        out << "{" << render_const_value(ktype, i->first) << ","
+            << render_const_value(vtype, i->second) << "}";
+      }
       if (++i != end) {
-        out << ",";
+        if (mapfunctions_) {
+          out << ";";
+        } else {
+          out << ",";
+        }
       }
     }
-    out << "])";
+    if (mapfunctions_) {
+      out << " end";
+    } else {
+      out << "])";
+    }
+
   } else if (type->is_set()) {
     t_type* etype = ((t_set*)type)->get_elem_type();
     out << "sets:from_list([";
@@ -587,7 +612,9 @@ string t_erl_generator::render_default_value(t_field* field) {
   if (type->is_struct() || type->is_xception()) {
     return "#" + type_name(type) + "{}";
   } else if (type->is_map()) {
-    if (maps_) {
+    if (mapfunctions_) {
+      return "fun(_)->erlang:error(function_clause)end";
+    } else if (maps_) {
       return "#{}";
     } else {
       return "dict:new()";
@@ -625,7 +652,9 @@ string t_erl_generator::render_member_type(t_field* field) {
   } else if (type->is_struct() || type->is_xception()) {
     return type_name(type) + "()";
   } else if (type->is_map()) {
-    if (maps_) {
+    if (mapfunctions_) {
+      return "fun((any())->any())";
+    } else if (maps_) {
       return "#{}";
     } else if (otp16_) {
       return "dict()";
@@ -1167,6 +1196,7 @@ std::string t_erl_generator::type_module(t_type* ttype) {
 THRIFT_REGISTER_GENERATOR(
     erl,
     "Erlang",
-    "    legacynames: Output files retain naming conventions of Thrift 0.9.1 and earlier.\n"
-    "    maps:        Generate maps instead of dicts.\n"
-    "    otp16:       Generate non-namespaced dict and set instead of dict:dict and sets:set.\n")
+    "    legacynames:  Output files retain naming conventions of Thrift 0.9.1 and earlier.\n"
+    "    mapfunctions: Generate functions instead of maps/dicts.\n"
+    "    maps:         Generate maps instead of dicts.\n"
+    "    otp16:        Generate non-namespaced dict and set instead of dict:dict and sets:set.\n")
