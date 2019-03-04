@@ -612,9 +612,7 @@ string t_erl_generator::render_default_value(t_field* field) {
   if (type->is_struct() || type->is_xception()) {
     return "#" + type_name(type) + "{}";
   } else if (type->is_map()) {
-    if (mapfunctions_) {
-      return "fun(_)->erlang:error(function_clause)end";
-    } else if (maps_) {
+    if (maps_) {
       return "#{}";
     } else {
       return "dict:new()";
@@ -652,9 +650,7 @@ string t_erl_generator::render_member_type(t_field* field) {
   } else if (type->is_struct() || type->is_xception()) {
     return type_name(type) + "()";
   } else if (type->is_map()) {
-    if (mapfunctions_) {
-      return "fun((any())->any())";
-    } else if (maps_) {
+    if (maps_) {
       return "#{}";
     } else if (otp16_) {
       return "dict()";
@@ -1197,6 +1193,6 @@ THRIFT_REGISTER_GENERATOR(
     erl,
     "Erlang",
     "    legacynames:  Output files retain naming conventions of Thrift 0.9.1 and earlier.\n"
-    "    mapfunctions: Generate functions instead of maps/dicts.\n"
+    "    mapfunctions: Generate constants with functions instead of maps/dicts.\n"
     "    maps:         Generate maps instead of dicts.\n"
     "    otp16:        Generate non-namespaced dict and set instead of dict:dict and sets:set.\n")
